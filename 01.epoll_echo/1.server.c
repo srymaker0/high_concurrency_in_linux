@@ -22,7 +22,8 @@ void msg_handle(char *buff) {
 
 int main(int argc, char **argv) {
     int opt, epollfd, server_listen, port;
-    int cfd[MAXUSER] = {0};
+    int client_fd;
+    int boy[MAXUSER + 5] = {0};
     if (argc != 3) {
         fprintf(stderr, "Usage : %s -p port", argv[0]);
         exit(1);
@@ -48,13 +49,13 @@ int main(int argc, char **argv) {
     }
     
     struct epoll_event ev, events[EPOLL_SIZE];
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     ev.data.fd = server_listen;
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, server_listen, &ev) < 0) {
         perror("epoll_ctl");
         exit(1);
     }
-    make_nonblock(server_listen);
+    //make_nonblock(server_listen);
     while (1) {
         int nfds = epoll_wait(epollfd, events, EPOLL_SIZE, -1);
         if (nfds < 0) {
@@ -65,37 +66,43 @@ int main(int argc, char **argv) {
             int fd = events[i].data.fd;
             if (fd == server_listen) {
                 struct sockaddr_in client;
-                int client_fd;
+                struct epoll_event ev;
                 socklen_t len = sizeof(client);
                 if ((client_fd = accept(server_listen, (struct sockaddr *)&client, &len)) < 0) {
                     perror("accept");
                     exit(1);
                 }
                 
-                //make_nonblock(new_fd);
+                boy[client_fd] = client_fd;
                 printf("<Accept> %s:%d!\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
                 
                 ev.events = EPOLLIN | EPOLLET;
-                ev.data.fd = client_fd;
-                if (epoll_ctl(epollfd, EPOLL_CTL_ADD, client_fd, &ev) < 0) {
+                ev.data.fd = boy[client_fd];
+                if (epoll_ctl(epollfd, EPOLL_CTL_ADD, boy[client_fd], &ev) < 0) {
                     perror("epoll_ctl");
                     exit(1);
                 }
-                make_nonblock(client_fd);
-                // 回显
-                char buff[4096] = {0};
-                bzero(buff, sizeof(buff));
-                int rsize = recv(fd, buff, sizeof(buff), 0);
-                printf("<The Msg>: %s\n", buff);
-                if (rsize <= 0) {
-                    epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
-                } else {
-                    msg_handle(buff); 
-                    send(client_fd, buff, strlen(buff), 0);   
+                //make_nonblock(boy[client_fd]);
+            } else {
+                for (int i = 0; i < MAXUSER + 1; i++) {
+                    if (boy[i] > 0 && boy[i] != fd) {
+                    char buff[4096] = {0};
+                    int rsize = recv(boy[i], buff, sizeof(buff), 0);
+                    if (rsize <= 0) {
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, boy[i], NULL);
+                        close(boy[i]);
+                        boy[i] = 0;
+                        //break;
+                    } else {
+                        msg_handle(buff);
+                        send(boy[i], buff, strlen(buff), 0);
+                    }
                 }
             }
         }
     }
+    }
+    //close(server_listen);
+    //close(epollfd);
     return 0;
 }
