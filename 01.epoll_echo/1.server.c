@@ -7,7 +7,7 @@
 
 #include "head.h"
 #define MAXUSER 100
-#define EPOLL_SIZE 1000
+#define EPOLL_SIZE 10
 
 void msg_handle(char *buff) {
     for (int i = 0; buff[i] != '\n'; i++) {
@@ -42,6 +42,9 @@ int main(int argc, char **argv) {
         perror("socket_create");
         exit(1);
     }
+
+    boy[server_listen] = server_listen;
+    // 创建实例
     epollfd = epoll_create(1);
     if (epollfd == -1) {
         perror("epollfd_create");
@@ -50,13 +53,16 @@ int main(int argc, char **argv) {
     
     struct epoll_event ev, events[EPOLL_SIZE];
     ev.events = EPOLLIN;
+    // 用户态设置
     ev.data.fd = server_listen;
+    // 内核态设置
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, server_listen, &ev) < 0) {
         perror("epoll_ctl");
         exit(1);
     }
     //make_nonblock(server_listen);
     while (1) {
+        // 感兴趣的事件放入到events数组中，是否用到了mmap？？是在内核态还是在用户态？？？
         int nfds = epoll_wait(epollfd, events, EPOLL_SIZE, -1);
         if (nfds < 0) {
             perror("epoll_wait");
@@ -84,23 +90,20 @@ int main(int argc, char **argv) {
                 }
                 //make_nonblock(boy[client_fd]);
             } else {
-                for (int i = 0; i < MAXUSER + 1; i++) {
-                    if (boy[i] > 0 && boy[i] != fd) {
-                    char buff[4096] = {0};
-                    int rsize = recv(boy[i], buff, sizeof(buff), 0);
+                char buff[4096] = {0};
+                if (events[i].events & (EPOLLIN | EPOLLERR | EPOLLHUP)) {
+                    int rsize = recv(fd, buff, sizeof(buff), 0);
                     if (rsize <= 0) {
-                        epoll_ctl(epollfd, EPOLL_CTL_DEL, boy[i], NULL);
-                        close(boy[i]);
-                        boy[i] = 0;
-                        //break;
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, NULL);
+                        close(fd);
+                        continue;
                     } else {
                         msg_handle(buff);
-                        send(boy[i], buff, strlen(buff), 0);
+                        send(fd, buff, strlen(buff), 0);
                     }
                 }
             }
         }
-    }
     }
     //close(server_listen);
     //close(epollfd);
