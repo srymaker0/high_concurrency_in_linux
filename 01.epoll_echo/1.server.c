@@ -78,12 +78,13 @@ int main(int argc, char **argv) {
                     perror("accept");
                     exit(1);
                 }
-                
+                // 将新的sock文件描述符存储到用户空间中 
                 boy[client_fd] = client_fd;
                 printf("<Accept> %s:%d!\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
                 
                 ev.events = EPOLLIN | EPOLLET;
                 ev.data.fd = boy[client_fd];
+                // 加入到epollfd实例中
                 if (epoll_ctl(epollfd, EPOLL_CTL_ADD, boy[client_fd], &ev) < 0) {
                     perror("epoll_ctl");
                     exit(1);
@@ -91,6 +92,7 @@ int main(int argc, char **argv) {
                 //make_nonblock(boy[client_fd]);
             } else {
                 char buff[4096] = {0};
+                // 只要有一个事件发生就进行操作
                 if (events[i].events & (EPOLLIN | EPOLLERR | EPOLLHUP)) {
                     int rsize = recv(fd, buff, sizeof(buff), 0);
                     if (rsize <= 0) {
